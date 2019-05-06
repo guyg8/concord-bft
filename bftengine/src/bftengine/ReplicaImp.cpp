@@ -776,13 +776,6 @@ namespace bftEngine
 					}
 				}
 			}
-
-			// TODO(GG): The following block is not needed because we create the combined signature in another thread. 
-			if (partialProofs.hasFullProof())	// TODO(GG): TBD - should be deleted
-			{
-				commitAndSendFullCommitProof(seqNum, seqNumInfo, partialProofs);
-			}
-
 		}
 
 
@@ -857,13 +850,6 @@ namespace bftEngine
 
 					if (pps.addMsg(msg))
 					{
-						// TODO(GG): The following block is not needed (pps.hasFullProof() will always be false) because we create the combined signature in another thread. TODO(GG): verify
-						if (pps.hasFullProof()) 
-						{
-							Assert(seqNumInfo.hasPrePrepareMsg());
-							commitAndSendFullCommitProof(msgSeqNum, seqNumInfo, pps);
-						}
-
 						return;
 					}
 				}
@@ -2571,17 +2557,6 @@ namespace bftEngine
 
 			executeNextCommittedRequests(askForMissingInfoAboutCommittedItems);
 		}
-
-		void  ReplicaImp::commitAndSendFullCommitProof(SeqNum seqNum, SeqNumInfo& seqNumInfo, PartialProofsSet& partialProofs)
-		{
-			FullCommitProofMsg* fcp = partialProofs.getFullProof();
-
-			sendToAllOtherReplicas(fcp);
-
-			commitFullCommitProof(seqNum, seqNumInfo);
-		}
-
-
 
 		void ReplicaImp::onMessage(SimpleAckMsg* msg)
 		{

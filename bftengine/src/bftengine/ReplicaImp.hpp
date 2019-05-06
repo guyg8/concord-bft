@@ -396,7 +396,6 @@ namespace bftEngine
 			void sendCheckpointIfNeeded();
 
 			void  commitFullCommitProof(SeqNum seqNum, SeqNumInfo& seqNumInfo);
-			void commitAndSendFullCommitProof(SeqNum seqNum, SeqNumInfo& seqNumInfo, PartialProofsSet& partialProofs);
 
 			virtual IncomingMsgsStorage& getIncomingMsgsStorage() override
 			{
