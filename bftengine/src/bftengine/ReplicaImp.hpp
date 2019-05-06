@@ -368,13 +368,14 @@ namespace bftEngine
 
 			void executeReadOnlyRequest(ClientRequestMsg *m);
 
-			void executeReadWriteRequests(const bool requestMissingInfo = false);
+			void executeNextCommittedRequests(const bool requestMissingInfo = false);
 
 			void executeRequestsInPrePrepareMsg(PrePrepareMsg *pp);
 
-			void onSeqNumIsStable(SeqNum);
-
-			void onSeqNumIsStableWithoutRefCheckpoint(SeqNum);
+			void onSeqNumIsStable(SeqNum newStableSeqNum, 
+				                    bool hasStateInformation = true, // true IFF we have checkpoint Or digest in the state transfer
+				                    bool oldSeqNum = false // true IFF sequence number newStableSeqNum+kWorkWindowSize has already been executed 
+			                     );
 
 			void onTransferringCompleteImp(SeqNum);
 

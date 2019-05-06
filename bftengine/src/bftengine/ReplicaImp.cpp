@@ -405,10 +405,8 @@ namespace bftEngine
 
 			if (requestsInQueue < minBatchSize) return;
 
-			primaryLastUsedSeqNum++;
-
 			// update batchingFactor
-			if ((primaryLastUsedSeqNum % kWorkWindowSize) == 0) // TODO(GG): do we want to update batchingFactor when the view is changed
+			if (((primaryLastUsedSeqNum + 1) % kWorkWindowSize) == 0) // TODO(GG): do we want to update batchingFactor when the view is changed
 			{
 				const size_t aa = 4; // TODO(GG): read from configuration
 				batchingFactor = (maxNumberOfPendingRequestsInRecentHistory / aa);
@@ -416,15 +414,15 @@ namespace bftEngine
 				maxNumberOfPendingRequestsInRecentHistory = 0;
 			}
 
-			Assert(primaryLastUsedSeqNum <= lastExecutedSeqNum + MaxConcurrentFastPaths); // because maxConcurrentAgreementsByPrimary <  MaxConcurrentFastPaths
+			Assert((primaryLastUsedSeqNum + 1) <= lastExecutedSeqNum + MaxConcurrentFastPaths); // because maxConcurrentAgreementsByPrimary <  MaxConcurrentFastPaths
 
 			CommitPath firstPath = controller->getCurrentFirstPath();
 
 			Assert((cVal != 0) || (firstPath != CommitPath::FAST_WITH_THRESHOLD)); // assert: (cVal==0) --> (firstPath != CommitPath::FAST_WITH_THRESHOLD) 
 
-			controller->onSendingPrePrepare(primaryLastUsedSeqNum, firstPath);
+			controller->onSendingPrePrepare((primaryLastUsedSeqNum + 1), firstPath);
 
-			PrePrepareMsg *pp = new PrePrepareMsg(myReplicaId, curView, primaryLastUsedSeqNum, firstPath, false);
+			PrePrepareMsg *pp = new PrePrepareMsg(myReplicaId, curView, (primaryLastUsedSeqNum + 1), firstPath, false);
 
 			ClientRequestMsg* nextRequest = requestsQueueOfPrimary.front();
 			while (nextRequest != nullptr && nextRequest->size() <= pp->remainingSizeForRequests())
@@ -446,10 +444,7 @@ namespace bftEngine
 			LOG_INFO_F(GL, "Sending PrePrepareMsg (seqNumber=%" PRId64 ", requests=%d, size=%d",
 				pp->seqNumber(), (int)pp->numberOfRequests(), (int)requestsQueueOfPrimary.size());
 
-			for (ReplicaId x : repsInfo->idsOfPeerReplicas())
-			{
-				sendRetransmittableMsgToReplica(pp, x, primaryLastUsedSeqNum);
-			}
+			primaryLastUsedSeqNum++;
 
 			SeqNumInfo& seqNumInfo = mainLog->get(primaryLastUsedSeqNum);
 			seqNumInfo.addSelfMsg(pp);
@@ -457,12 +452,17 @@ namespace bftEngine
 			if (firstPath == CommitPath::SLOW)
 			{
 				seqNumInfo.startSlowPath();
-                                metric_slow_path_count_.Get().Inc();
+        metric_slow_path_count_.Get().Inc();
 				sendPreparePartial(seqNumInfo);
 			}
 			else
 			{
 				sendPartialProof(seqNumInfo);
+			}
+
+			for (ReplicaId x : repsInfo->idsOfPeerReplicas())
+			{
+				sendRetransmittableMsgToReplica(pp, x, primaryLastUsedSeqNum);
 			}
 		}
 
@@ -777,7 +777,8 @@ namespace bftEngine
 				}
 			}
 
-			if (partialProofs.hasFullProof())
+			// TODO(GG): The following block is not needed because we create the combined signature in another thread. 
+			if (partialProofs.hasFullProof())	// TODO(GG): TBD - should be deleted
 			{
 				commitAndSendFullCommitProof(seqNum, seqNumInfo, partialProofs);
 			}
@@ -856,7 +857,7 @@ namespace bftEngine
 
 					if (pps.addMsg(msg))
 					{
-						// GG: The following block is not needed (pps.hasFullProof() will always be false) because we create the combined signature in another thread. TODO(GG): verify
+						// TODO(GG): The following block is not needed (pps.hasFullProof() will always be false) because we create the combined signature in another thread. TODO(GG): verify
 						if (pps.hasFullProof()) 
 						{
 							Assert(seqNumInfo.hasPrePrepareMsg());
@@ -1251,7 +1252,7 @@ namespace bftEngine
 
 			bool askForMissingInfoAboutCommittedItems = (seqNumber > lastExecutedSeqNum + maxConcurrentAgreementsByPrimary);
 
-			executeReadWriteRequests(askForMissingInfoAboutCommittedItems);
+			executeNextCommittedRequests(askForMissingInfoAboutCommittedItems);
 		}
 
 
@@ -1280,7 +1281,7 @@ namespace bftEngine
 
 			bool askForMissingInfoAboutCommittedItems = (seqNumber > lastExecutedSeqNum + maxConcurrentAgreementsByPrimary);
 
-			executeReadWriteRequests(askForMissingInfoAboutCommittedItems);
+			executeNextCommittedRequests(askForMissingInfoAboutCommittedItems);
 		}
 
 
@@ -2124,47 +2125,48 @@ namespace bftEngine
 
 		void ReplicaImp::onTransferringCompleteImp(SeqNum newStateCheckpoint)
 		{
-			bool askAnotherStateTransfer = false;
-			
 			Assert(newStateCheckpoint % checkpointWindowSize == 0);
 
 			LOG_INFO_F(GL, "onTransferringCompleteImp with newStateCheckpoint==%" PRId64 "", newStateCheckpoint);
 
+			if (newStateCheckpoint <= lastExecutedSeqNum)
+			{
+				LOG_WARN_F(GL, "Executing onTransferringCompleteImp(newStateCheckpoint) where newStateCheckpoint <= lastExecutedSeqNum");
+				return;
+			}
+
+			bool askAnotherStateTransfer = false;
+
 			timeOfLastStateSynch = getMonotonicTime(); // TODO(GG): handle restart/pause
 
-			if (newStateCheckpoint > lastExecutedSeqNum)
+			lastExecutedSeqNum = newStateCheckpoint;
+			metric_last_executed_seq_num_.Get().Set(lastExecutedSeqNum);
+
+			clientsManager->loadInfoFromReservedPages();
+
+			if (newStateCheckpoint > lastStableSeqNum + kWorkWindowSize)
 			{
-//				const SeqNum prevLastExecutedSeqNum = lastExecutedSeqNum;
+				const SeqNum refPoint = newStateCheckpoint - kWorkWindowSize;
+				const bool withRefCheckpoint = (checkpointsLog->insideActiveWindow(refPoint) && (checkpointsLog->get(refPoint).selfCheckpointMsg() != nullptr));
 
-				lastExecutedSeqNum = newStateCheckpoint;
-                                metric_last_executed_seq_num_.Get().Set(lastExecutedSeqNum);
-
-				clientsManager->loadInfoFromReservedPages();
-
-				if (newStateCheckpoint > lastStableSeqNum + kWorkWindowSize)
-				{
-					const SeqNum refPoint = newStateCheckpoint - kWorkWindowSize;
-					const bool withRefCheckpoint = (checkpointsLog->insideActiveWindow(refPoint) && (checkpointsLog->get(refPoint).selfCheckpointMsg() != nullptr));
-
-					if (withRefCheckpoint)
-						onSeqNumIsStable(refPoint);
-					else
-						onSeqNumIsStableWithoutRefCheckpoint(refPoint);
-				}
-
-				Digest digestOfNewState;
-				const uint64_t checkpointNum = newStateCheckpoint / checkpointWindowSize;
-				stateTransfer->getDigestOfCheckpoint(checkpointNum, sizeof(Digest), (char*)&digestOfNewState);
-				CheckpointMsg* checkpointMsg = new CheckpointMsg(myReplicaId, newStateCheckpoint, digestOfNewState, false);
-				CheckpointInfo& checkpointInfo = checkpointsLog->get(newStateCheckpoint);
-				checkpointInfo.addCheckpointMsg(checkpointMsg, myReplicaId);
-				checkpointInfo.setCheckpointSentAllOrApproved();
-				sendToAllOtherReplicas(checkpointMsg);
+				onSeqNumIsStable(refPoint, withRefCheckpoint, true);
 			}
-			else
-			{
-				LOG_ERROR_F(GL, "Debug Warning: executing onTransferringCompleteImp(newStateCheckpoint) where newStateCheckpoint <= lastExecutedSeqNum");
-			}
+
+			// newStateCheckpoint should be in the active window
+			Assert(checkpointsLog->insideActiveWindow(newStateCheckpoint));
+
+			// create and send my checkpoint
+			Digest digestOfNewState;
+			const uint64_t checkpointNum = newStateCheckpoint / checkpointWindowSize;
+			stateTransfer->getDigestOfCheckpoint(checkpointNum, sizeof(Digest), (char*)&digestOfNewState);
+			CheckpointMsg* checkpointMsg = new CheckpointMsg(myReplicaId, newStateCheckpoint, digestOfNewState, false);
+			CheckpointInfo& checkpointInfo = checkpointsLog->get(newStateCheckpoint);
+			checkpointInfo.addCheckpointMsg(checkpointMsg, myReplicaId);
+			checkpointInfo.setCheckpointSentAllOrApproved();
+			sendToAllOtherReplicas(checkpointMsg);
+
+			if (newStateCheckpoint > primaryLastUsedSeqNum)
+				primaryLastUsedSeqNum = newStateCheckpoint;
 
 			if ((uint16_t)tableOfStableCheckpoints.size() >= fVal + 1)
 			{
@@ -2191,17 +2193,6 @@ namespace bftEngine
 				if ((uint16_t)tableOfStableCheckpoints.size() >= fVal + 1)
 					askAnotherStateTransfer = true;
 			}
-
-			if (newStateCheckpoint > primaryLastUsedSeqNum)
-				primaryLastUsedSeqNum = newStateCheckpoint;
-
-			if (currentViewIsActive() && !stateTransfer->isCollectingState())
-			{
-				executeReadWriteRequests();
-
-				if (isCurrentPrimary() && !requestsQueueOfPrimary.empty())
-					tryToSendPrePrepareMsg();
-			}
 			
 			if(askAnotherStateTransfer)
 			{
@@ -2210,34 +2201,9 @@ namespace bftEngine
 			}
 		}
 
-
-		void ReplicaImp::onSeqNumIsStableWithoutRefCheckpoint(SeqNum newStableSeqNum)
+ 		void ReplicaImp::onSeqNumIsStable(SeqNum newStableSeqNum, bool hasStateInformation, bool oldSeqNum)
 		{
-			Assert(newStableSeqNum % checkpointWindowSize == 0);
-
-			if (newStableSeqNum <= lastStableSeqNum) return;
-
-			LOG_INFO_F(GL, "onSeqNumIsStableWithoutRefCheckpoint: lastStableSeqNum is now == %" PRId64 "", newStableSeqNum);
-
-			lastStableSeqNum = newStableSeqNum;
-                        metric_last_stable_seq_num__.Get().Set(lastStableSeqNum);
-
-			if (lastStableSeqNum > strictLowerBoundOfSeqNums)
-				strictLowerBoundOfSeqNums = lastStableSeqNum;
-
-			if (lastStableSeqNum > primaryLastUsedSeqNum)
-				primaryLastUsedSeqNum = lastStableSeqNum;
-
-			mainLog->advanceActiveWindow(lastStableSeqNum + 1);
-
-			checkpointsLog->advanceActiveWindow(lastStableSeqNum);
-
-			const uint64_t checkpointNum = lastStableSeqNum / checkpointWindowSize;
-			stateTransfer->markCheckpointAsStable(checkpointNum);
-		}
-
-		void ReplicaImp::onSeqNumIsStable(SeqNum newStableSeqNum)
-		{
+			Assert(hasStateInformation || oldSeqNum); // !hasStateInformation ==> oldSeqNum
 			Assert(newStableSeqNum % checkpointWindowSize == 0);
 
 			if (newStableSeqNum <= lastStableSeqNum) return;
@@ -2250,14 +2216,6 @@ namespace bftEngine
 			if (lastStableSeqNum > strictLowerBoundOfSeqNums)
 				strictLowerBoundOfSeqNums = lastStableSeqNum;
 
-			if (lastStableSeqNum > lastExecutedSeqNum)
-			{
-				lastExecutedSeqNum = lastStableSeqNum;
-                                metric_last_executed_seq_num_.Get().Set(lastExecutedSeqNum);
-
-				clientsManager->loadInfoFromReservedPages();
-			}
-
 			if (lastStableSeqNum > primaryLastUsedSeqNum)
 				primaryLastUsedSeqNum = lastStableSeqNum;
 
@@ -2265,31 +2223,39 @@ namespace bftEngine
 
 			checkpointsLog->advanceActiveWindow(lastStableSeqNum);
 
-			const uint64_t checkpointNum = lastStableSeqNum / checkpointWindowSize;
-			stateTransfer->markCheckpointAsStable(checkpointNum);
 
-			CheckpointInfo& checkpointInfo = checkpointsLog->get(lastStableSeqNum);
-			CheckpointMsg* checkpointMsg = checkpointInfo.selfCheckpointMsg();
-
-			if (checkpointMsg == nullptr)
+			if (hasStateInformation)
 			{
-				Digest digestOfState;
-				const uint64_t checkpointNum = lastStableSeqNum / checkpointWindowSize;
-				stateTransfer->getDigestOfCheckpoint(checkpointNum, sizeof(Digest), (char*)&digestOfState);
-				checkpointMsg = new CheckpointMsg(myReplicaId, lastStableSeqNum, digestOfState, true);
-				checkpointInfo.addCheckpointMsg(checkpointMsg, myReplicaId);
+				if (lastStableSeqNum > lastExecutedSeqNum)
+				{
+					lastExecutedSeqNum = lastStableSeqNum;
+					metric_last_executed_seq_num_.Get().Set(lastExecutedSeqNum);
+
+					clientsManager->loadInfoFromReservedPages();
+				}
+
+				CheckpointInfo& checkpointInfo = checkpointsLog->get(lastStableSeqNum);
+				CheckpointMsg* checkpointMsg = checkpointInfo.selfCheckpointMsg();
+
+				if (checkpointMsg == nullptr)
+				{
+					Digest digestOfState;
+					const uint64_t checkpointNum = lastStableSeqNum / checkpointWindowSize;
+					stateTransfer->getDigestOfCheckpoint(checkpointNum, sizeof(Digest), (char*)&digestOfState);
+					checkpointMsg = new CheckpointMsg(myReplicaId, lastStableSeqNum, digestOfState, true);
+					checkpointInfo.addCheckpointMsg(checkpointMsg, myReplicaId);
+				}
+				else
+				{
+					checkpointMsg->setStateAsStable();
+				}
+
+				if (!checkpointInfo.isCheckpointCertificateComplete()) checkpointInfo.tryToMarkCheckpointCertificateCompleted();
+				Assert(checkpointInfo.isCheckpointCertificateComplete());
 			}
-			else
-			{
-				checkpointMsg->setStateAsStable();
-			}
 
-			if (!checkpointInfo.isCheckpointCertificateComplete()) checkpointInfo.tryToMarkCheckpointCertificateCompleted();
-			Assert(checkpointInfo.isCheckpointCertificateComplete());
-
-			if (currentViewIsActive() && !stateTransfer->isCollectingState()) // TODO(GG): TBD
+			if (!oldSeqNum && currentViewIsActive() && (currentPrimary() == myReplicaId) &&  !stateTransfer->isCollectingState())
 			{
-				if (currentPrimary() == myReplicaId)
 					tryToSendPrePrepareMsg();
 			}
 		}
@@ -2603,7 +2569,7 @@ namespace bftEngine
 
 			const bool askForMissingInfoAboutCommittedItems = (seqNum > lastExecutedSeqNum + maxConcurrentAgreementsByPrimary); // TODO(GG): check this logic
 
-			executeReadWriteRequests(askForMissingInfoAboutCommittedItems);
+			executeNextCommittedRequests(askForMissingInfoAboutCommittedItems);
 		}
 
 		void  ReplicaImp::commitAndSendFullCommitProof(SeqNum seqNum, SeqNumInfo& seqNumInfo, PartialProofsSet& partialProofs)
@@ -3152,6 +3118,7 @@ namespace bftEngine
 			Assert(!stateTransfer->isCollectingState() && currentViewIsActive());
 			Assert(ppMsg != nullptr);
 			Assert(ppMsg->viewNumber() == curView);
+			Assert(ppMsg->seqNumber() == lastExecutedSeqNum + 1);
 
 			RequestsIterator reqIter(ppMsg);
 			char* requestBody = nullptr;
@@ -3267,12 +3234,12 @@ namespace bftEngine
 
 
 
-		void ReplicaImp::executeReadWriteRequests(const bool requestMissingInfo) 
+		void ReplicaImp::executeNextCommittedRequests(const bool requestMissingInfo) 
 		{
 			Assert(!stateTransfer->isCollectingState() && currentViewIsActive());
 			Assert(lastExecutedSeqNum >= lastStableSeqNum);
 	
-			LOG_INFO_F(GL, "Calling to executeReadWriteRequests(requestMissingInfo=%d)",(int)requestMissingInfo);
+			LOG_INFO_F(GL, "Calling to executeNextCommittedRequests(requestMissingInfo=%d)",(int)requestMissingInfo);
 
 			while (lastExecutedSeqNum < lastStableSeqNum + kWorkWindowSize)
 			{
@@ -3284,7 +3251,7 @@ namespace bftEngine
 		
 				if (requestMissingInfo && !ready)
 				{
-					LOG_INFO_F(GL, "executeReadWriteRequests - Asking for missing information about %" PRId64 "", lastExecutedSeqNum + 1);
+					LOG_INFO_F(GL, "executeNextCommittedRequests - Asking for missing information about %" PRId64 "", lastExecutedSeqNum + 1);
 		
 					tryToSendReqMissingDataMsg(lastExecutedSeqNum + 1);
 				}
