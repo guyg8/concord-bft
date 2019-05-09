@@ -109,6 +109,8 @@ namespace bftEngine
 		public:
 			RequestsIterator(const PrePrepareMsg* const m);
 
+			void restart();
+
 			bool getCurrent(char*& pRequest) const;
 
 			bool end() const;

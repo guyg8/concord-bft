@@ -370,7 +370,7 @@ namespace bftEngine
 
 			void executeNextCommittedRequests(const bool requestMissingInfo = false);
 
-			void executeRequestsInPrePrepareMsg(PrePrepareMsg *pp);
+			void executeRequestsInPrePrepareMsg(PrePrepareMsg *pp, bool recoverFromErrorInRequestsExecution = false);
 
 			void onSeqNumIsStable(SeqNum newStableSeqNum, 
 				                    bool hasStateInformation = true, // true IFF we have checkpoint Or digest in the state transfer
@@ -394,8 +394,6 @@ namespace bftEngine
 			void onReportAboutInvalidMessage(MessageBase* msg);
 
 			void sendCheckpointIfNeeded();
-
-			void  commitFullCommitProof(SeqNum seqNum, SeqNumInfo& seqNumInfo);
 
 			virtual IncomingMsgsStorage& getIncomingMsgsStorage() override
 			{

@@ -239,6 +239,11 @@ namespace bftEngine
 			Assert(msg->isReady());
 		}
 
+		void RequestsIterator::restart()
+		{
+			currLoc = sizeof(PrePrepareMsg::PrePrepareMsgHeader);
+		}
+
 		bool RequestsIterator::getCurrent(char*& pRequest) const
 		{
 			if (end()) return false;

@@ -6,6 +6,9 @@
 //
 //This product may include a number of subcomponents with separate copyright notices and license terms. Your use of these subcomponents is subject to the terms and conditions of the subcomponent's license, as noted in the LICENSE file.
 
+#if defined(_WIN32)		 // TODO(GG): remove
+#include <windows.h>
+#endif
 
 #include "ReplicaImp.hpp"
 #include "assertUtils.hpp"
@@ -896,7 +899,11 @@ namespace bftEngine
 				{
 					Assert(seqNumInfo.hasPrePrepareMsg());
 
-					commitFullCommitProof(msgSeqNum, seqNumInfo);
+					seqNumInfo.forceComplete();	// TODO(GG): remove forceComplete() (we know that  seqNumInfo is committed becuase of the  FullCommitProofMsg message)
+
+					const bool askForMissingInfoAboutCommittedItems = (msgSeqNum > lastExecutedSeqNum + maxConcurrentAgreementsByPrimary); // TODO(GG): check/improve this logic
+					executeNextCommittedRequests(askForMissingInfoAboutCommittedItems);
+
 
 					return;
 				}
@@ -2548,16 +2555,6 @@ namespace bftEngine
 			DebugStatistics::onCycleCheck();
 		}
 
-
-		void  ReplicaImp::commitFullCommitProof(SeqNum seqNum, SeqNumInfo& seqNumInfo)
-		{
-			seqNumInfo.forceComplete();
-
-			const bool askForMissingInfoAboutCommittedItems = (seqNum > lastExecutedSeqNum + maxConcurrentAgreementsByPrimary); // TODO(GG): check this logic
-
-			executeNextCommittedRequests(askForMissingInfoAboutCommittedItems);
-		}
-
 		void ReplicaImp::onMessage(SimpleAckMsg* msg)
 		{
                         metric_received_simple_acks_.Get().Inc();
@@ -3087,103 +3084,182 @@ namespace bftEngine
 		}
 
 
+		class Bitmap // TODO(GG): move to another file
+		{
+		public:
 
-		void ReplicaImp::executeRequestsInPrePrepareMsg(PrePrepareMsg* ppMsg)
+			Bitmap(size_t size) :
+				size_(size),
+				p_((unsigned char*)std::malloc(realSize()))
+			{
+				Assert(size_ > 0);
+				zeroAll();
+			}
+
+			~Bitmap()
+			{
+				std::free(p_);
+			}
+
+			void zeroAll()
+			{
+				memset((void*)p_, 0, realSize());
+			}
+
+			size_t size() const
+			{
+				return size_;
+			}
+
+			bool get(size_t i) const
+			{
+				Assert(i < size_);
+				const size_t byteIndex = i / 8;
+				const unsigned char byteMask = (1 << (i % 8));
+				return ((p_[byteIndex] & byteMask) != 0);
+			}
+
+			void set(size_t i)
+			{
+				Assert(i < size_);
+				const size_t byteIndex = i / 8;
+				const unsigned char byteMask = (1 << (i % 8));
+				p_[byteIndex] = p_[byteIndex] | byteMask;
+			}
+
+			void reset(size_t i)
+			{
+				Assert(i < size_);
+				const size_t byteIndex = i / 8;
+				const unsigned char byteMask = ((unsigned char)0xFF) & ~(1 << (i % 8));
+				p_[byteIndex] = p_[byteIndex] & byteMask;
+			}
+
+		protected:
+
+			const size_t size_;
+			unsigned char* const p_;
+
+			size_t realSize() const
+			{
+				return ((size_ + 7) / 8) * 8;
+			}
+		};
+
+		void ReplicaImp::executeRequestsInPrePrepareMsg(PrePrepareMsg* ppMsg, bool recoverFromErrorInRequestsExecution)
 		{
 			Assert(!stateTransfer->isCollectingState() && currentViewIsActive());
 			Assert(ppMsg != nullptr);
 			Assert(ppMsg->viewNumber() == curView);
 			Assert(ppMsg->seqNumber() == lastExecutedSeqNum + 1);
 
-			RequestsIterator reqIter(ppMsg);
-			char* requestBody = nullptr;
-			while (reqIter.getAndGoToNext(requestBody)) 
+			const uint16_t numOfRequests = ppMsg->numberOfRequests();
+
+			Assert(!recoverFromErrorInRequestsExecution || (numOfRequests > 0)); // recoverFromErrorInRequestsExecution ==> (numOfRequests > 0)
+
+			if (numOfRequests > 0)
 			{
-				ClientRequestMsg req((ClientRequestMsgHeader*)requestBody);
-				NodeIdType clientId = req.clientProxyId();
+				Bitmap requestSet(numOfRequests);
+				size_t reqIdx = 0;
+				RequestsIterator reqIter(ppMsg);
+				char* requestBody = nullptr;
 
-				const bool validClient = clientsManager->isValidClient(clientId);
-				if (!validClient)
+				//////////////////////////////////////////////////////////////////////
+				// Phase 1: 
+				// a. Find the requests that should be executed 
+				// b. Send reply for each request that has already been executed
+				//////////////////////////////////////////////////////////////////////
+				if (!recoverFromErrorInRequestsExecution)
 				{
-					// TODO(GG): warning?
-					continue;
+					while (reqIter.getAndGoToNext(requestBody))
+					{
+						ClientRequestMsg req((ClientRequestMsgHeader*)requestBody);
+						NodeIdType clientId = req.clientProxyId();
+
+						const bool validClient = clientsManager->isValidClient(clientId);
+						if (!validClient) {
+							// TODO(GG): TBD - warning and/or report
+							continue;
+						}
+
+						if (clientsManager->seqNumberOfLastReplyToClient(clientId) >= req.requestSeqNum()) {
+							ClientReplyMsg* replyMsg = clientsManager->allocateMsgWithLatestReply(clientId, currentPrimary());
+							send(replyMsg, clientId);
+							delete replyMsg;
+							continue;
+						}
+
+						requestSet.set(reqIdx);
+						reqIdx++;
+					}
+					reqIter.restart();
+
+					// TODO(GG): write requestSet (bitmap of the requests that should be executed) to MetadataStorage
 				}
-	
-				if (clientsManager->seqNumberOfLastReplyToClient(clientId) >= req.requestSeqNum())
-				{	
-					ClientReplyMsg* replyMsg = clientsManager->allocateMsgWithLatestReply(clientId, currentPrimary());
-					send(replyMsg, clientId);
-					delete replyMsg;
-	
-					// TODO(GG): warning?
-					continue;
+				else
+				{
+					Assert(false); // not supported yet....
+					// TODO(GG): load the recovered bitmap requests + copy to requestSet + check consistency
 				}
 
+				//////////////////////////////////////////////////////////////////////
+				// Phase 2: execute requests + send replies
+				// In this phase the application state may be changed. We also change data in the state transfer module.
+				// TODO(GG): Explain what happens in recovery mode (what are the requirements from  the application, and from the state transfer module.
+				//////////////////////////////////////////////////////////////////////
 
-				uint32_t actualReplyLength = 0;
-				int error = userRequestsHandler->execute(
+				reqIdx = 0;
+				requestBody = nullptr;
+				while (reqIter.getAndGoToNext(requestBody))
+				{
+					size_t tmp = reqIdx;
+					reqIdx++;
+					if (!requestSet.get(tmp)) continue;
+
+					ClientRequestMsg req((ClientRequestMsgHeader*)requestBody);
+					NodeIdType clientId = req.clientProxyId();
+
+					uint32_t actualReplyLength = 0;
+					userRequestsHandler->execute(
 						clientId, lastExecutedSeqNum + 1, req.isReadOnly(),
 						req.requestLength(), req.requestBuf(),
 						maxReplyMessageSize - sizeof(ClientReplyMsgHeader),
 						replyBuffer, actualReplyLength);
 
-				Assert(error == 0); // TODO(GG): TBD
-			
-				Assert(actualReplyLength > 0); // TODO(GG): TBD - how do we want to support empty replies? (actualReplyLength==0)
+					Assert(actualReplyLength > 0); // TODO(GG): TBD - how do we want to support empty replies? (actualReplyLength==0)
 
-				ClientReplyMsg* replyMsg = clientsManager->allocateNewReplyMsgAndWriteToStorage(clientId, req.requestSeqNum(), currentPrimary(), replyBuffer, actualReplyLength);
-	
-				if (!supportDirectProofs && actualReplyLength != 0)
-				{
+					ClientReplyMsg* replyMsg = clientsManager->allocateNewReplyMsgAndWriteToStorage(clientId, req.requestSeqNum(), currentPrimary(), replyBuffer, actualReplyLength);
+
 					send(replyMsg, clientId);
-				}
-	
-				delete replyMsg;
 
-				clientsManager->removePendingRequestOfClient(clientId);
+					delete replyMsg;
+
+					clientsManager->removePendingRequestOfClient(clientId);
+				}
+
 			}
 
-			if ((lastExecutedSeqNum + 1) % checkpointWindowSize == 0) 
+			if ((lastExecutedSeqNum + 1) % checkpointWindowSize == 0)
 			{
 				const uint64_t checkpointNum = (lastExecutedSeqNum + 1) / checkpointWindowSize;
 				stateTransfer->createCheckpointOfCurrentState(checkpointNum);
 			}
 
+			//////////////////////////////////////////////////////////////////////
+			// Phase 3: finalize the execution of lastExecutedSeqNum+1
+			// TODO(GG): Explain what happens in recovery mode
+			//////////////////////////////////////////////////////////////////////
+
+			LOG_INFO_F(GL, "\nReplica - executeRequestsInPrePrepareMsg() - lastExecutedSeqNum==%" PRId64 "", (lastExecutedSeqNum+1));
+
+			// TODO(GG): reset the bitmap of the requests by writing to MetadataStorage 
+
 			lastExecutedSeqNum = lastExecutedSeqNum + 1;
-                        metric_last_executed_seq_num_.Get().Set(lastExecutedSeqNum);
 
-			LOG_INFO_F(GL, "\nReplica - executeRequestsInPrePrepareMsg() - lastExecutedSeqNum==%" PRId64 "", lastExecutedSeqNum);
-
-			bool firstCommitPathChanged =
-                          controller->onNewSeqNumberExecution(lastExecutedSeqNum);
-
-                        if (firstCommitPathChanged) {
-                          metric_first_commit_path_.Get().Set(CommitPathToStr(
-                              controller->getCurrentFirstPath()));
-                        }
-
-
-			// TODO(GG): clean the following logic
-
+			metric_last_executed_seq_num_.Get().Set(lastExecutedSeqNum);
 
 			if (lastViewThatTransferredSeqNumbersFullyExecuted < curView && (lastExecutedSeqNum >= maxSeqNumTransferredFromPrevViews))
 				lastViewThatTransferredSeqNumbersFullyExecuted = curView;
-
-			{ // update dynamicUpperLimitOfRounds
-				const SeqNumInfo& seqNumInfo = mainLog->get(lastExecutedSeqNum);
-				const Time firstInfo = seqNumInfo.getTimeOfFisrtRelevantInfoFromPrimary();
-				const Time currTime = getMonotonicTime();
-				if ((firstInfo < currTime)) {
-					const int64_t durationMilli = (subtract(currTime, firstInfo) / 1000);
-					dynamicUpperLimitOfRounds->add(durationMilli);
-				}
-			}
-
-			if (supportDirectProofs)
-			{
-				Assert(false);
-				// TODO(GG): use code from previous drafts
-			}
 
 			if (lastExecutedSeqNum % checkpointWindowSize == 0)
 			{
@@ -3201,6 +3277,25 @@ namespace bftEngine
 			}
 
 			sendCheckpointIfNeeded();
+
+			bool firstCommitPathChanged =
+                          controller->onNewSeqNumberExecution(lastExecutedSeqNum);
+
+      if (firstCommitPathChanged) {
+        metric_first_commit_path_.Get().Set(CommitPathToStr(
+            controller->getCurrentFirstPath()));
+      }
+
+			// TODO(GG): clean the following logic
+			{ // update dynamicUpperLimitOfRounds
+				const SeqNumInfo& seqNumInfo = mainLog->get(lastExecutedSeqNum);
+				const Time firstInfo = seqNumInfo.getTimeOfFisrtRelevantInfoFromPrimary();
+				const Time currTime = getMonotonicTime();
+				if ((firstInfo < currTime)) {
+					const int64_t durationMilli = (subtract(currTime, firstInfo) / 1000);
+					dynamicUpperLimitOfRounds->add(durationMilli);
+				}
+			}
 	
 		#ifdef DEBUG_STATISTICS
 			DebugStatistics::onRequestCompleted(false);
