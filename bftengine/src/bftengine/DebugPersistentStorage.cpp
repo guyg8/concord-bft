@@ -200,8 +200,8 @@ void DebugPersistentStorage::setDescriptorOfLastExecution(
   Assert(!hasDescriptorOfLastExecution_ ||
          descriptorOfLastExecution_.executedSeqNum < d.executedSeqNum);
   Assert(lastExecutedSeqNum_ + 1 == d.executedSeqNum);
-	Assert(d.validRequests.numOfBits() >= 1);
-	Assert(d.validRequests.numOfBits() <= maxNumOfRequestsInBatch);
+  Assert(d.validRequests.numOfBits() >= 1);
+  Assert(d.validRequests.numOfBits() <= maxNumOfRequestsInBatch);
 
   hasDescriptorOfLastExecution_ = true;
   descriptorOfLastExecution_ =

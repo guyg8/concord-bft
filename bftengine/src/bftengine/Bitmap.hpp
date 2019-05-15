@@ -70,7 +70,7 @@ class Bitmap {
     memset((void*)p_, 0, realSize());
   }
 
-	uint32_t numOfBits() const { return numBits_; }
+  uint32_t numOfBits() const { return numBits_; }
 
   bool get(uint32_t i) const {
     Assert(i < numBits_);
@@ -93,55 +93,52 @@ class Bitmap {
     p_[byteIndex] = p_[byteIndex] & byteMask;
   }
 
-	void writeToBuffer(char* buffer, uint32_t bufferLength, uint32_t* actualSize) const
-	{
-		const uint32_t sizeNeeded = sizeNeededInBuffer();
-		Assert(bufferLength >= sizeNeeded);
-		uint32_t* pNumOfBits = (uint32_t*)buffer;
-		char* pBitmap = buffer + sizeof(uint32_t);
-		*pNumOfBits = numBits_;
-		memcpy(pBitmap, p_, realSize());
-		if (actualSize) *actualSize = sizeNeeded;
-	}
+  void writeToBuffer(char* buffer,
+                     uint32_t bufferLength,
+                     uint32_t* actualSize) const {
+    const uint32_t sizeNeeded = sizeNeededInBuffer();
+    Assert(bufferLength >= sizeNeeded);
+    uint32_t* pNumOfBits = (uint32_t*)buffer;
+    char* pBitmap = buffer + sizeof(uint32_t);
+    *pNumOfBits = numBits_;
+    memcpy(pBitmap, p_, realSize());
+    if (actualSize) *actualSize = sizeNeeded;
+  }
 
-	uint32_t sizeNeededInBuffer() const
-	{
-		return (sizeof(uint32_t) + realSize(numBits_));
-	}
+  uint32_t sizeNeededInBuffer() const {
+    return (sizeof(uint32_t) + realSize(numBits_));
+  }
 
-	static Bitmap* createBitmapFromBuffer(char* buffer, uint32_t bufferLength, uint32_t* actualSize)
-	{
-		Assert(bufferLength >= sizeof(uint32_t));
-		uint32_t* pNumOfBits = (uint32_t*)buffer;
-		if (*pNumOfBits == 0)
-		{
-			if(actualSize) *actualSize = sizeof(uint32_t);
-			return new Bitmap();
-		}
-		else
-		{
-			char* pBitmap = buffer + sizeof(uint32_t);
-			Bitmap* b = new Bitmap();
-			b->numBits_ = *pNumOfBits;
-			b->p_ = (unsigned char*)std::malloc(*pNumOfBits);
-			std::memcpy(b->p_, pBitmap, realSize(*pNumOfBits));
-			if (actualSize) *actualSize = sizeof(uint32_t) + realSize(*pNumOfBits);
-			return b;
-		}
-	}
+  static Bitmap* createBitmapFromBuffer(char* buffer,
+                                        uint32_t bufferLength,
+                                        uint32_t* actualSize) {
+    Assert(bufferLength >= sizeof(uint32_t));
+    uint32_t* pNumOfBits = (uint32_t*)buffer;
+    if (*pNumOfBits == 0) {
+      if (actualSize) *actualSize = sizeof(uint32_t);
+      return new Bitmap();
+    } else {
+      char* pBitmap = buffer + sizeof(uint32_t);
+      Bitmap* b = new Bitmap();
+      b->numBits_ = *pNumOfBits;
+      b->p_ = (unsigned char*)std::malloc(*pNumOfBits);
+      std::memcpy(b->p_, pBitmap, realSize(*pNumOfBits));
+      if (actualSize) *actualSize = sizeof(uint32_t) + realSize(*pNumOfBits);
+      return b;
+    }
+  }
 
-	static uint32_t maxSizeNeededToStoreInBuffer(uint32_t maxNumOfBits)
-	{
-		return (sizeof(uint32_t) + realSize(maxNumOfBits));
-	}
+  static uint32_t maxSizeNeededToStoreInBuffer(uint32_t maxNumOfBits) {
+    return (sizeof(uint32_t) + realSize(maxNumOfBits));
+  }
 
  protected:
-	uint32_t numBits_;
+  uint32_t numBits_;
   unsigned char* p_;
 
-	uint32_t realSize() const { return realSize(numBits_); }
+  uint32_t realSize() const { return realSize(numBits_); }
 
-	static uint32_t realSize(uint32_t nbits) { return ((nbits + 7) / 8); }
+  static uint32_t realSize(uint32_t nbits) { return ((nbits + 7) / 8); }
 };
 }  // namespace impl
 }  // namespace bftEngine
