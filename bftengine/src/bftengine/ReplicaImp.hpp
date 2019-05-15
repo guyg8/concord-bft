@@ -32,7 +32,9 @@
 #include "ICommunication.hpp"
 #include "Replica.hpp"
 #include "Threading.h"
+#include "PersistentStorage.hpp"
 #include "Metrics.hpp"
+
 
 #include <thread>
 
@@ -200,6 +202,9 @@ namespace bftEngine
 			Timer* debugStatTimer = nullptr;
 
 			int viewChangeTimerMilli;
+
+			PersistentStorage* ps_ = nullptr;
+
 
 			class MsgReceiver : public IReceiver
 			{

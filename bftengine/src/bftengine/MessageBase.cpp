@@ -119,5 +119,86 @@ namespace bftEngine
 			msgSize_ = size;
 		}
 
+		MessageBase* MessageBase::cloneObjAndMsg() const
+		{
+			Assert(owner_);
+			Assert(msgSize_ > 0);
+
+			void* msgBody = std::malloc(msgSize_);
+			memcpy(msgBody, msgBody_, msgSize_);
+
+			MessageBase* otherMsg = 
+				new MessageBase(sender_, (MessageBase::Header*)msgBody, msgSize_,true);
+
+			return otherMsg;
+		}
+
+		namespace
+		{
+#pragma pack(push,1)
+			struct RawHeaderOfObjAndMsg
+			{
+				uint32_t magicNum;
+				MsgSize msgSize;
+				NodeIdType sender;
+				// TODO(GG): consider to add checksum
+			};
+#pragma pack(pop)
+
+			const uint32_t magicNumOfRawFormat = 0x5555897BU;		   
+		}
+
+		void MessageBase::writeObjAndMsgToLocalBuffer(char* buffer, size_t bufferLength, size_t& actualSize) const
+		{
+			Assert(owner_);
+			Assert(msgSize_ > 0);
+
+			const size_t sizeNeeded = sizeof(RawHeaderOfObjAndMsg) + msgSize_;
+
+			Assert(sizeNeeded <= bufferLength);
+
+			RawHeaderOfObjAndMsg* pHeader = (RawHeaderOfObjAndMsg*)buffer;
+			pHeader->magicNum = magicNumOfRawFormat;
+			pHeader->msgSize = msgSize_;
+			pHeader->sender = sender_;
+
+			char* pRawMsg = buffer + sizeof(RawHeaderOfObjAndMsg);
+			memcpy(pRawMsg, msgBody_, msgSize_);
+
+			actualSize = sizeNeeded;
+		}
+
+		size_t MessageBase::sizeNeededForObjAndMsgInLocalBuffer() const
+		{
+			Assert(owner_);
+			Assert(msgSize_ > 0);
+
+			const size_t sizeNeeded = sizeof(RawHeaderOfObjAndMsg) + msgSize_;
+
+			return sizeNeeded;
+		}
+
+		MessageBase* MessageBase::createObjAndMsgFromLocalBuffer(char* buffer, size_t bufferLength)
+		{
+			if (bufferLength <= sizeof(RawHeaderOfObjAndMsg)) return nullptr;
+
+			RawHeaderOfObjAndMsg* pHeader = (RawHeaderOfObjAndMsg*)buffer;
+			if (pHeader->magicNum != magicNumOfRawFormat) return nullptr;
+			if (pHeader->msgSize == 0) return nullptr;
+			if (pHeader->msgSize > maxExternalMessageSize) return nullptr;
+			if (pHeader->msgSize + sizeof(RawHeaderOfObjAndMsg) > bufferLength) return nullptr;
+			
+			char* pBodyInBuffer = buffer + sizeof(RawHeaderOfObjAndMsg);
+
+			void* msgBody = std::malloc(pHeader->msgSize);
+			memcpy(msgBody, pBodyInBuffer, pHeader->msgSize);
+
+			MessageBase* msgObj =
+				new MessageBase(pHeader->sender, (MessageBase::Header*)msgBody, pHeader->msgSize, true);
+
+			return msgObj;
+		}
+
+
 	}
 }

@@ -47,6 +47,12 @@ namespace bftEngine
 
 			MsgType type() const { return msgBody_->msgType; }
 
+			MessageBase* cloneObjAndMsg() const;
+
+			void writeObjAndMsgToLocalBuffer(char* buffer, size_t bufferLength, size_t& actualSize) const;
+			size_t sizeNeededForObjAndMsgInLocalBuffer() const;
+			static MessageBase* createObjAndMsgFromLocalBuffer(char* buffer, size_t bufferLength);
+
 #ifdef DEBUG_MEMORY_MSG
 			static void printLiveMessages();
 #endif
