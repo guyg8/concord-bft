@@ -3,7 +3,8 @@
 // Copyright (c) 2018 VMware, Inc. All Rights Reserved.
 //
 // This product is licensed to you under the Apache 2.0 license (the "License").
-// You may not use this product except in compliance with the Apache 2.0 License.
+// You may not use this product except in compliance with the Apache 2.0
+// License.
 //
 // This product may include a number of subcomponents with separate copyright
 // notices and license terms. Your use of these subcomponents is subject to the
@@ -19,161 +20,171 @@
 
 #include <vector>
 
-namespace bftEngine
-{
-namespace impl
-{
-	class PrePrepareMsg;
-	class CheckpointMsg;
-	class ViewChangeMsg;
-	class NewViewMsg;
-	class FullCommitProofMsg;
-	class PrepareFullMsg;
-	class CommitFullMsg;
+namespace bftEngine {
+namespace impl {
+class PrePrepareMsg;
+class CheckpointMsg;
+class ViewChangeMsg;
+class NewViewMsg;
+class FullCommitProofMsg;
+class PrepareFullMsg;
+class CommitFullMsg;
 
-	class PersistentStorage
-	{
-	public:
+class PersistentStorage {
+ public:
+  //////////////////////////////////////////////////////////////////////////
+  // Types
+  //////////////////////////////////////////////////////////////////////////
 
-		//////////////////////////////////////////////////////////////////////////
-		// Types
-		//////////////////////////////////////////////////////////////////////////
+  struct DescriptorOfLastExitFromView {
+    // view >= 0
+    ViewNum view;
 
-		struct DescriptorOfLastExitFromView
-		{
-			// view >= 0
-			ViewNum view;	
-			
-			// lastStable >= 0
-			SeqNum lastStable;	
-			
-			// lastExecuted >= lastStable
-			SeqNum lastExecuted; 
-			
-			// elements.size() <= kWorkWindowSize
-			// The messages in elements[i] may be null
-			std::vector<ViewsManager::PrevViewInfo> elements;  
-		};
+    // lastStable >= 0
+    SeqNum lastStable;
 
-		struct DescriptorOfLastNewView
-		{
-			// view >= 1
-			ViewNum view;
+    // lastExecuted >= lastStable
+    SeqNum lastExecuted;
 
-			// newViewMsg != nullptr
-			NewViewMsg* newViewMsg;
+    // elements.size() <= kWorkWindowSize
+    // The messages in elements[i] may be null
+    std::vector<ViewsManager::PrevViewInfo> elements;
+  };
 
-			// viewChangeMsgs.size() == 2*F + 2*C + 1
-			// The messages in viewChangeMsgs will never be null
-			std::vector<ViewChangeMsg*> viewChangeMsgs;
-			
-			// maxSeqNumTransferredFromPrevViews >= 0
-			SeqNum maxSeqNumTransferredFromPrevViews;
-		};
+  struct DescriptorOfLastNewView {
+    // view >= 1
+    ViewNum view;
 
+    // newViewMsg != nullptr
+    NewViewMsg* newViewMsg;
 
-		struct DescriptorOfLastExecution
-		{
-			// executedSeqNum >= 1
-			SeqNum executedSeqNum;
+    // viewChangeMsgs.size() == 2*F + 2*C + 1
+    // The messages in viewChangeMsgs will never be null
+    std::vector<ViewChangeMsg*> viewChangeMsgs;
 
-			// 1 <= validRequests.numOfBits() <= TBD					TODO(GG): find this number....
-			Bitmap validRequests;
-		};
+    // maxSeqNumTransferredFromPrevViews >= 0
+    SeqNum maxSeqNumTransferredFromPrevViews;
+  };
 
+  struct DescriptorOfLastExecution {
+    // executedSeqNum >= 1
+    SeqNum executedSeqNum;
 
-		//////////////////////////////////////////////////////////////////////////
-		// Transactions management 
-		//////////////////////////////////////////////////////////////////////////
-																																							
-		// begin reentrant write-only transaction
-		// returns the number of nested transactions
-		virtual uint8_t beginWriteTran() = 0; 
-		
-		// end reentrant write-only transaction
-		// returns the number of remaining nested transactions
-		virtual uint8_t endWriteTran() = 0;
+    // 1 <= validRequests.numOfBits() <= TBD					TODO(GG): find this
+    // number....
+    Bitmap validRequests;
+  };
 
-		// return true IFF write-only transactions are running now
-		virtual bool isInWriteTran() const = 0;
-																											
-		//////////////////////////////////////////////////////////////////////////
-		// Update methods (should only be used in write-only transactions) 
-		//////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////
+  // Transactions management
+  //////////////////////////////////////////////////////////////////////////
 
-		virtual void setReplicaConfig(ReplicaConfig config) = 0;
+  // begin reentrant write-only transaction
+  // returns the number of nested transactions
+  virtual uint8_t beginWriteTran() = 0;
 
-		virtual void setFetchingState(const bool f) = 0;
-		virtual void setLastExecutedSeqNum(const SeqNum s) = 0;
-		virtual void setPrimaryLastUsedSeqNum(const SeqNum s) = 0;
-		virtual void setStrictLowerBoundOfSeqNums(const SeqNum s) = 0;
-		virtual void setLastViewThatTransferredSeqNumbersFullyExecuted(const ViewNum v) = 0;
+  // end reentrant write-only transaction
+  // returns the number of remaining nested transactions
+  virtual uint8_t endWriteTran() = 0;
 
-		// DescriptorOfLastExitFromView contains pointers to messages (the content of the messages should be copied, the caller is the owner of these messagse). 
-		virtual void setDescriptorOfLastExitFromView(const DescriptorOfLastExitFromView& prevViewDesc) = 0;
-		
-		// DescriptorOfLastNewView contains pointers to messages (the content of the messages should be copied, the caller is the owner of these messagse). 
-		virtual void setDescriptorOfLastNewView(const DescriptorOfLastNewView& prevViewDesc) = 0;
+  // return true IFF write-only transactions are running now
+  virtual bool isInWriteTran() const = 0;
 
-		virtual void setDescriptorOfLastExecution(const DescriptorOfLastExecution& prevViewDesc) = 0;
+  //////////////////////////////////////////////////////////////////////////
+  // Update methods (should only be used in write-only transactions)
+  //////////////////////////////////////////////////////////////////////////
 
-		virtual void setLastStableSeqNum(const SeqNum s) = 0;
-		// 
-		// The window of sequence numbers is:
-		// { i | LS + 1 <= i <= LS + kWorkWindowSize }  
-		// where LS=lastStableSeqNum
-		//
-		// The window of checkpoints is:
-		// { LS, LS + CWS, LS + 2 * CWS }
-		// where LS=lastStableSeqNum and CWS=checkpointWindowSize
+  virtual void setReplicaConfig(ReplicaConfig config) = 0;
 
-		virtual void clearSeqNumWindow() = 0;
+  virtual void setFetchingState(const bool f) = 0;
+  virtual void setLastExecutedSeqNum(const SeqNum s) = 0;
+  virtual void setPrimaryLastUsedSeqNum(const SeqNum s) = 0;
+  virtual void setStrictLowerBoundOfSeqNums(const SeqNum s) = 0;
+  virtual void setLastViewThatTransferredSeqNumbersFullyExecuted(
+      const ViewNum v) = 0;
 
-		virtual void setPrePrepareMsgInSeqNumWindow(const SeqNum s, const PrePrepareMsg* const m) = 0;
-		virtual void setSlowStartedInSeqNumWindow(const SeqNum s, const bool slowStarted) = 0;
-		virtual void setFullCommitProofMsgInSeqNumWindow(const SeqNum s, const FullCommitProofMsg* const m) = 0;
-		virtual void setForceCompletedInSeqNumWindow(const SeqNum s, const bool forceCompleted) = 0;
-		virtual void setPrepareFullMsgInSeqNumWindow(const SeqNum s, const PrepareFullMsg* const m) = 0;
-		virtual void setCommitFullMsgInSeqNumWindow(const SeqNum s, const CommitFullMsg* const m) = 0;
+  // DescriptorOfLastExitFromView contains pointers to messages (the content of
+  // the messages should be copied, the caller is the owner of these messagse).
+  virtual void setDescriptorOfLastExitFromView(
+      const DescriptorOfLastExitFromView& prevViewDesc) = 0;
 
-		virtual void setCheckpointMsgInCheckWindow(const SeqNum s, const CheckpointMsg* const m) = 0;
-		virtual void setCompletedMarkInCheckWindow(const SeqNum s, const bool f) = 0;
+  // DescriptorOfLastNewView contains pointers to messages (the content of the
+  // messages should be copied, the caller is the owner of these messagse).
+  virtual void setDescriptorOfLastNewView(
+      const DescriptorOfLastNewView& prevViewDesc) = 0;
 
-		//////////////////////////////////////////////////////////////////////////
-		// Read methods (should only be used before using write-only transactions) 
-		//////////////////////////////////////////////////////////////////////////
+  virtual void setDescriptorOfLastExecution(
+      const DescriptorOfLastExecution& prevViewDesc) = 0;
 
-		virtual bool hasReplicaConfig() = 0;
-		virtual ReplicaConfig getReplicaConig() = 0;
+  virtual void setLastStableSeqNum(const SeqNum s) = 0;
+  //
+  // The window of sequence numbers is:
+  // { i | LS + 1 <= i <= LS + kWorkWindowSize }
+  // where LS=lastStableSeqNum
+  //
+  // The window of checkpoints is:
+  // { LS, LS + CWS, LS + 2 * CWS }
+  // where LS=lastStableSeqNum and CWS=checkpointWindowSize
 
-		virtual bool getFetchingState() = 0;
-		virtual SeqNum getLastExecutedSeqNum() = 0;
-		virtual SeqNum getPrimaryLastUsedSeqNum() = 0;
-		virtual SeqNum getStrictLowerBoundOfSeqNums() = 0;
-		virtual ViewNum getLastViewThatTransferredSeqNumbersFullyExecuted() = 0;
+  virtual void clearSeqNumWindow() = 0;
 
+  virtual void setPrePrepareMsgInSeqNumWindow(const SeqNum s,
+                                              const PrePrepareMsg* const m) = 0;
+  virtual void setSlowStartedInSeqNumWindow(const SeqNum s,
+                                            const bool slowStarted) = 0;
+  virtual void setFullCommitProofMsgInSeqNumWindow(
+      const SeqNum s, const FullCommitProofMsg* const m) = 0;
+  virtual void setForceCompletedInSeqNumWindow(const SeqNum s,
+                                               const bool forceCompleted) = 0;
+  virtual void setPrepareFullMsgInSeqNumWindow(
+      const SeqNum s, const PrepareFullMsg* const m) = 0;
+  virtual void setCommitFullMsgInSeqNumWindow(const SeqNum s,
+                                              const CommitFullMsg* const m) = 0;
 
-		virtual bool hasDescriptorOfLastExitFromView() = 0;
-		virtual DescriptorOfLastExitFromView getAndAllocateDescriptorOfLastExitFromView() = 0;
-		
-		virtual bool hasDescriptorOfLastNewView() = 0;
-		virtual DescriptorOfLastNewView getAndAllocateDescriptorOfLastNewView() = 0;
-		
-		virtual bool hasDescriptorOfLastExecution() = 0;
-		virtual DescriptorOfLastExecution getDescriptorOfLastExecution() = 0;
+  virtual void setCheckpointMsgInCheckWindow(const SeqNum s,
+                                             const CheckpointMsg* const m) = 0;
+  virtual void setCompletedMarkInCheckWindow(const SeqNum s, const bool f) = 0;
 
-		virtual SeqNum getLastStableSeqNum() = 0;
+  //////////////////////////////////////////////////////////////////////////
+  // Read methods (should only be used before using write-only transactions)
+  //////////////////////////////////////////////////////////////////////////
 
-		virtual PrePrepareMsg* getAndAllocatePrePrepareMsgInSeqNumWindow(const SeqNum s) = 0;
-		virtual bool getSlowStartedInSeqNumWindow(const SeqNum s) = 0;
-		virtual FullCommitProofMsg* getAndAllocateFullCommitProofMsgInSeqNumWindow(const SeqNum s) = 0;
-		virtual bool getForceCompletedInSeqNumWindow(const SeqNum s) = 0;
-		virtual PrepareFullMsg* getAndAllocatePrepareFullMsgInSeqNumWindow(const SeqNum s) = 0;
-		virtual CommitFullMsg* getAndAllocateCommitFullMsgInSeqNumWindow(const SeqNum s) = 0;
+  virtual bool hasReplicaConfig() = 0;
+  virtual ReplicaConfig getReplicaConig() = 0;
 
-		virtual CheckpointMsg* getAndAllocateCheckpointMsgInCheckWindow(const SeqNum s) = 0;
-		virtual bool getCompletedMarkInCheckWindow(const SeqNum s) = 0;	
-	};
+  virtual bool getFetchingState() = 0;
+  virtual SeqNum getLastExecutedSeqNum() = 0;
+  virtual SeqNum getPrimaryLastUsedSeqNum() = 0;
+  virtual SeqNum getStrictLowerBoundOfSeqNums() = 0;
+  virtual ViewNum getLastViewThatTransferredSeqNumbersFullyExecuted() = 0;
 
-}
-}
+  virtual bool hasDescriptorOfLastExitFromView() = 0;
+  virtual DescriptorOfLastExitFromView
+  getAndAllocateDescriptorOfLastExitFromView() = 0;
+
+  virtual bool hasDescriptorOfLastNewView() = 0;
+  virtual DescriptorOfLastNewView getAndAllocateDescriptorOfLastNewView() = 0;
+
+  virtual bool hasDescriptorOfLastExecution() = 0;
+  virtual DescriptorOfLastExecution getDescriptorOfLastExecution() = 0;
+
+  virtual SeqNum getLastStableSeqNum() = 0;
+
+  virtual PrePrepareMsg* getAndAllocatePrePrepareMsgInSeqNumWindow(
+      const SeqNum s) = 0;
+  virtual bool getSlowStartedInSeqNumWindow(const SeqNum s) = 0;
+  virtual FullCommitProofMsg* getAndAllocateFullCommitProofMsgInSeqNumWindow(
+      const SeqNum s) = 0;
+  virtual bool getForceCompletedInSeqNumWindow(const SeqNum s) = 0;
+  virtual PrepareFullMsg* getAndAllocatePrepareFullMsgInSeqNumWindow(
+      const SeqNum s) = 0;
+  virtual CommitFullMsg* getAndAllocateCommitFullMsgInSeqNumWindow(
+      const SeqNum s) = 0;
+
+  virtual CheckpointMsg* getAndAllocateCheckpointMsgInCheckWindow(
+      const SeqNum s) = 0;
+  virtual bool getCompletedMarkInCheckWindow(const SeqNum s) = 0;
+};
+
+}  // namespace impl
+}  // namespace bftEngine
