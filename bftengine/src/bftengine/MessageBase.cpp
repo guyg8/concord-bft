@@ -133,22 +133,8 @@ namespace bftEngine
 			return otherMsg;
 		}
 
-		namespace
-		{
-#pragma pack(push,1)
-			struct RawHeaderOfObjAndMsg
-			{
-				uint32_t magicNum;
-				MsgSize msgSize;
-				NodeIdType sender;
-				// TODO(GG): consider to add checksum
-			};
-#pragma pack(pop)
 
-			const uint32_t magicNumOfRawFormat = 0x5555897BU;		   
-		}
-
-		void MessageBase::writeObjAndMsgToLocalBuffer(char* buffer, size_t bufferLength, size_t& actualSize) const
+		void MessageBase::writeObjAndMsgToLocalBuffer(char* buffer, size_t bufferLength, size_t* actualSize) const
 		{
 			Assert(owner_);
 			Assert(msgSize_ > 0);
@@ -165,7 +151,7 @@ namespace bftEngine
 			char* pRawMsg = buffer + sizeof(RawHeaderOfObjAndMsg);
 			memcpy(pRawMsg, msgBody_, msgSize_);
 
-			actualSize = sizeNeeded;
+			if(actualSize) *actualSize = sizeNeeded;
 		}
 
 		size_t MessageBase::sizeNeededForObjAndMsgInLocalBuffer() const
@@ -178,8 +164,10 @@ namespace bftEngine
 			return sizeNeeded;
 		}
 
-		MessageBase* MessageBase::createObjAndMsgFromLocalBuffer(char* buffer, size_t bufferLength)
+		MessageBase* MessageBase::createObjAndMsgFromLocalBuffer(char* buffer, size_t bufferLength, size_t* actualSize)
 		{
+			if(actualSize) *actualSize = 0;
+
 			if (bufferLength <= sizeof(RawHeaderOfObjAndMsg)) return nullptr;
 
 			RawHeaderOfObjAndMsg* pHeader = (RawHeaderOfObjAndMsg*)buffer;
@@ -195,6 +183,8 @@ namespace bftEngine
 
 			MessageBase* msgObj =
 				new MessageBase(pHeader->sender, (MessageBase::Header*)msgBody, pHeader->msgSize, true);
+
+			if (actualSize) *actualSize = (pHeader->msgSize + sizeof(RawHeaderOfObjAndMsg));
 
 			return msgObj;
 		}

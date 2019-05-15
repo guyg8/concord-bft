@@ -70,8 +70,7 @@ class PersistentStorage {
     // executedSeqNum >= 1
     SeqNum executedSeqNum;
 
-    // 1 <= validRequests.numOfBits() <= TBD					TODO(GG): find this
-    // number....
+    // 1 <= validRequests.numOfBits() <= maxNumOfRequestsInBatch
     Bitmap validRequests;
   };
 

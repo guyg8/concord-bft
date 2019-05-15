@@ -64,6 +64,11 @@ constexpr uint32_t maxExternalMessageSize = 64 * 1000; // TODO(GG): some message
 
 constexpr uint32_t maxReplyMessageSize = 8 * 1024;
 
+///////////////////////////////////////////////////////////////////////////////
+// Batching
+///////////////////////////////////////////////////////////////////////////////
+
+constexpr uint32_t maxNumOfRequestsInBatch = 1024;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Requests for missing information 
@@ -135,7 +140,9 @@ constexpr bool ControllerWithSimpleHistory_debugDowngradeEnabled = true;
 constexpr bool ControllerWithSimpleHistory_debugUpgradeEnabled = true;
 
 ///////////////////////////////////////////////////////////////////////////////
-// Persistency Debug
+// Persistency
 ///////////////////////////////////////////////////////////////////////////////
+
+constexpr uint32_t maxSizeOfCombinedsignature = 1024; // TODO(GG): should be checked
 
 constexpr bool debugPersistentStorageEnabled = true;
