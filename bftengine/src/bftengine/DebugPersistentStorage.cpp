@@ -64,13 +64,11 @@ void DebugPersistentStorage::setLastExecutedSeqNum(const SeqNum s) {
 
 void DebugPersistentStorage::setPrimaryLastUsedSeqNum(const SeqNum s) {
   Assert(nonExecSetIsAllowed());
-  Assert(primaryLastUsedSeqNum_ <= s);
   primaryLastUsedSeqNum_ = s;
 }
 
 void DebugPersistentStorage::setStrictLowerBoundOfSeqNums(const SeqNum s) {
   Assert(nonExecSetIsAllowed());
-  Assert(strictLowerBoundOfSeqNums_ <= s);
   strictLowerBoundOfSeqNums_ = s;
 }
 

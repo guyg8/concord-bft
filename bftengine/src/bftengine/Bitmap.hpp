@@ -66,9 +66,9 @@ class Bitmap {
   }
 
   void zeroAll() {
-		if (p_ == nullptr) return;
-		const uint32_t s = realSize();
-		Assert(s > 0);
+    if (p_ == nullptr) return;
+    const uint32_t s = realSize();
+    Assert(s > 0);
     memset((void*)p_, 0, s);
   }
 
@@ -114,21 +114,21 @@ class Bitmap {
   static Bitmap* createBitmapFromBuffer(char* buffer,
                                         uint32_t bufferLength,
                                         uint32_t* actualSize) {
-		if (actualSize) *actualSize = 0;
-		if (bufferLength < sizeof(uint32_t)) return nullptr;
+    if (actualSize) *actualSize = 0;
+    if (bufferLength < sizeof(uint32_t)) return nullptr;
     uint32_t* pNumOfBits = (uint32_t*)buffer;
-		const uint32_t numOfBitmapBytes = realSize(*pNumOfBits);
-		const uint32_t sizeNeeded = sizeof(uint32_t) + numOfBitmapBytes;
-    if(bufferLength < sizeNeeded) return nullptr;
-		Bitmap* b = new Bitmap();
+    const uint32_t numOfBitmapBytes = realSize(*pNumOfBits);
+    const uint32_t sizeNeeded = sizeof(uint32_t) + numOfBitmapBytes;
+    if (bufferLength < sizeNeeded) return nullptr;
+    Bitmap* b = new Bitmap();
     if (*pNumOfBits > 0) {
       char* pBitmap = buffer + sizeof(uint32_t);
       b->numBits_ = *pNumOfBits;
       b->p_ = (unsigned char*)std::malloc(numOfBitmapBytes);
       std::memcpy(b->p_, pBitmap, numOfBitmapBytes);
     }
-		if (actualSize) *actualSize = sizeNeeded;
-		return b;
+    if (actualSize) *actualSize = sizeNeeded;
+    return b;
   }
 
   static uint32_t maxSizeNeededToStoreInBuffer(uint32_t maxNumOfBits) {
@@ -136,7 +136,6 @@ class Bitmap {
   }
 
  protected:
-
   uint32_t numBits_;
   unsigned char* p_;
 
