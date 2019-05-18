@@ -30,6 +30,17 @@ class FullCommitProofMsg;
 class PrepareFullMsg;
 class CommitFullMsg;
 
+// The PersistentStorage interface is used to write/read the concord-bft state 
+// to/from a persistent storage. In case the replica’s process is killed, 
+// crashed or restarted, this interface is used to restore the concord-bft 
+// state from the persistent storage. 
+// PersistentStorage is designed to only store data elements that are essential 
+// to reconstruct the internal in-memory data structures of concord-bft.
+// For simplicity and efficiency, some of the internal data elements are not 
+// written to the persistent storage (for example, messages with partial 
+// threshold signatures are not stored in persistent storage; if needed such 
+// messages are re-created and retransmitted by the replicas).
+
 class PersistentStorage {
  public:
   //////////////////////////////////////////////////////////////////////////
@@ -115,8 +126,12 @@ class PersistentStorage {
   virtual void setDescriptorOfLastExecution(
       const DescriptorOfLastExecution& prevViewDesc) = 0;
 
+	// We have two windows "SeqNumWindow" and "CheckWindow"	
+	// TODO(GG): explain the windows. 
+
   virtual void setLastStableSeqNum(const SeqNum s) = 0;
-  //
+  
+	//
   // The window of sequence numbers is:
   // { i | LS + 1 <= i <= LS + kWorkWindowSize }
   // where LS=lastStableSeqNum
