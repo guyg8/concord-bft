@@ -39,6 +39,7 @@ set(corebft_source_files
     src/bftengine/StateTransferMsg.cpp
     src/bftengine/ClientsManager.cpp
     src/bftengine/Crypto.cpp
+src/bftengine/ReplicaLoader.cpp
 	src/bftengine/NullStateTransfer.cpp
     src/bftengine/BFTEngine.cpp
     src/bftengine/SimpleClient.cpp

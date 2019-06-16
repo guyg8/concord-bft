@@ -78,8 +78,10 @@ Status ReplicaImp::start()
 
 Status ReplicaImp::stop()
 {
-	m_replica->stop();
-	return Status::OK();
+	return Status::IllegalOperation("NotImplemented");
+
+	//m_bcDbAdapter->getDb()->close();
+	//return Status::OK();
 }
 
 
@@ -90,7 +92,7 @@ ReplicaImp::RepStatus ReplicaImp::getReplicaStatus() const
 
 bool ReplicaImp::isRunning() const
 {
-	return m_replica->isRunning();
+       return m_replica->isRunning();
 }
 
 
@@ -404,7 +406,7 @@ Slice ReplicaImp::getBlockInternal(BlockId blockId) const
 	}
 }
 
-bool ReplicaImp::executeCommand(uint16_t clientId,
+bool ReplicaImp::executeCommand(uint16_t clientId,uint64_t kk,
 	bool readOnly,
 	uint32_t requestSize,
 	const char* request,
@@ -706,8 +708,7 @@ SetOfKeyValuePairs ReplicaImp::fetchBlockData(Slice block)
 	return retVal;
 }
 
-int RequestsHandlerImp::execute(uint16_t clientId,
-	uint64_t sequenceNum,
+int RequestsHandlerImp::execute(uint16_t clientId,uint64_t kk,
 	bool readOnly,
 	uint32_t requestSize,
 	const char* request,
@@ -717,14 +718,12 @@ int RequestsHandlerImp::execute(uint16_t clientId,
 	
 	ReplicaImp* r = m_Executor;
 
-	bool ret = r->executeCommand(clientId, readOnly, requestSize, request, maxReplySize, outReply, outActualReplySize);
+	bool ret = r->executeCommand(clientId, 0, readOnly, requestSize, request, maxReplySize, outReply, outActualReplySize);
 	return ret?0:1;
 }
 
-IReplica* createReplica(const ReplicaConfig& c,
-                        bftEngine::ICommunication* comm,
-                        ICommandsHandler* _cmdHandler,
-                        std::shared_ptr<concordMetrics::Aggregator> aggregator) {
+IReplica* createReplica(const ReplicaConfig& c, bftEngine::ICommunication* comm, ICommandsHandler* _cmdHandler)
+{
 
 	IDBClient* _db = new InMemoryDBClient();
 
@@ -779,7 +778,6 @@ IReplica* createReplica(const ReplicaConfig& c,
 			stateTransfer,
 			comm,
 			nullptr);
-                replica->SetAggregator(aggregator);
 
 		r->m_replica = replica;
 		r->maxBlockSize = c.maxBlockSize;

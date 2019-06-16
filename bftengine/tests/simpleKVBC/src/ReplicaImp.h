@@ -14,13 +14,11 @@
 #pragma once
 
 #include <map>
-#include <memory>
 
 #include "KVBCInterfaces.h"
 #include "BlockchainDBAdapter.h"
 #include "SimpleBCStateTransfer.hpp"
 #include "Replica.hpp"
-#include "Metrics.hpp"
 
 using namespace bftEngine::SimpleBlockchainStateTransfer;
 
@@ -37,8 +35,7 @@ namespace SimpleKVBC {
 		virtual Status start() override;
 		virtual Status stop() override;
 		virtual RepStatus getReplicaStatus() const override;
-		virtual bool isRunning() const override;
-																				 
+		virtual bool isRunning() const override;																		 
 		// ILocalKeyValueStorageReadOnly methods
 		
 		virtual Status get(Slice key, Slice& outValue) const override;
@@ -74,7 +71,7 @@ namespace SimpleKVBC {
 		void insertBlockInternal(BlockId blockId, Slice block);
 		Slice getBlockInternal(BlockId blockId) const;
 		BlockchainDBAdapter* getBcDbAdapter() const { return m_bcDbAdapter; }
-		bool executeCommand(uint16_t clientId,
+		bool executeCommand(uint16_t clientId,uint64_t kk,
 			bool readOnly,
 			uint32_t requestSize,
 			const char* request,
@@ -170,20 +167,14 @@ namespace SimpleKVBC {
 
 
 		// friends
-		friend IReplica* createReplica(
-                    const ReplicaConfig& conf,
-                    bftEngine::ICommunication* comm,
-                    ICommandsHandler* _cmdHandler,
-                    std::shared_ptr<concordMetrics::Aggregator> aggregator);
-
+		friend IReplica* createReplica(const ReplicaConfig& conf, bftEngine::ICommunication* comm, ICommandsHandler* _cmdHandler);
 		friend RequestsHandlerImp;
 	};
 
 	class RequestsHandlerImp : public bftEngine::RequestsHandler {
 	public:
 		ReplicaImp* m_Executor;
-		int execute(uint16_t clientId,
-			uint64_t sequenceNum,
+		int execute(uint16_t clientId,uint64_t kk,
 			bool readOnly,
 			uint32_t requestSize,
 			const char* request,

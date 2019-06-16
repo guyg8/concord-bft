@@ -166,7 +166,7 @@ int main(int argc, char **argv) {
         concordMetrics::Server server(metricsPort);
         server.Start();
 
-	r = createReplica(c, comm, BasicRandomTests::commandsHandler(), server.GetAggregator());
+	r = createReplica(c, comm, BasicRandomTests::commandsHandler());
 	r->start();
 	while (r->isRunning())
 		std::this_thread::sleep_for(std::chrono::seconds(1));
